@@ -1,0 +1,282 @@
+#!/bin/bash
+# =========================================
+# Shazim - Zimwiki Markdown Parser For Terminals
+# =========================================
+# GitHub: https://github.com/ChristianSilvermoon/Modularized-Shell-Runtime-Config
+# =================================================================================
+# This is free and unencumbered software released into the public domain.
+#
+# Anyone is free to copy, modify, publish, use, compile, sell, or
+# distribute this software, either in source code form or as a compiled
+# binary, for any purpose, commercial or non-commercial, and by any
+# means.
+#
+# In jurisdictions that recognize copyright laws, the author or authors
+# of this software dedicate any and all copyright interest in the
+# software to the public domain. We make this dedication for the benefit
+# of the public at large and to the detriment of our heirs and
+# successors. We intend this dedication to be an overt act of
+# relinquishment in perpetuity of all present and future rights to this
+# software under copyright law.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+# IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+# OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+# ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+# OTHER DEALINGS IN THE SOFTWARE.
+#
+# For more information, please refer to <https://unlicense.org>
+# =========================================
+
+
+# Zim Markdown Examples:
+#
+# [[Link]]
+# [[https://example.com|Named Link]]
+# **bold**
+# //italic//
+# __underline__
+# ~~struck~~
+# _{subscript}
+# ^{superscript}
+# ''verbatim''
+# --------------------
+
+zim-parser() {
+	# 1 String to parse
+	local i			# Loop Index
+	local sym_buffer	# Buffer for Checking Special Character Matches.
+	local new_string	# Output String
+	local bold		# Bold Starting Index
+	local italic		# Italic Starting Index
+	local verbatim		# Verbatim Starting Index
+	local highlight		# Highlight Starting Index
+	local tag		# Tag Staring Index
+	local char		# Character we are currently operating on.
+	local fmt=()		# Array for Terminal Formatting Codes.
+	local del=()		# Array of counts to delete from final string
+
+	if [ "$1" = "--------------------" ]; then
+		local COLUMNS="$(tput cols)"
+		local linechars=""
+		for ((i = 0; i > COLUMNS; i++)); do
+			linechars+="-"
+		done
+		echo "$linechars"
+		return
+	fi
+
+	for ((i = 0; i < ${#1}; i++)); do
+		char=${1:i:1}
+
+		case "$char" in
+			'*')
+				# Bold Processing
+				if [ "$sym_buffer" = '*' ]; then
+					# Trigger Formatting
+					[ "$verbatim" ]&& continue
+					if [ "$bold" ]; then
+						# End Formatting
+
+						# Store Deletions
+						del[$((bold - 1))]=1	
+						del[$((i -1))]=1
+
+						# Store Formatting Codes
+						fmt[$((bold - 1))]="$(echo -en "\e[1m")"
+						fmt[$((i - 1))]="$(echo -en "\e[22m")"
+						bold=""
+					else
+						# Start Formatting
+						[ "$(echo "${1:i}" | grep "**")" ] && bold="$i"
+					fi
+				fi
+				;;
+			'/')
+				# Italic Processing
+				if [ "$sym_buffer" = '/' ]; then
+					# Trigger Formatting
+					[ "$verbatim" ]&& continue
+					if [ "$italic" ]; then
+						# End Formatting
+
+						# Store Deletions
+						del[$((italic - 1))]=1	
+						del[$((i -1))]=1
+
+						# Store Formatting Codes
+						fmt[$((italic - 1))]="$(echo -en "\e[3m")"
+						fmt[$((i - 1))]="$(echo -en "\e[23m")"
+						italic=""
+					else
+						# Start Formatting
+						[ "$(echo "${1:i}" | grep "//")" ] && italic="$i"
+					fi
+				fi
+				;;
+			"_")
+				# Verbatim Processing
+				if [ "$sym_buffer" = "_" ]; then
+					# Trigger Formatting
+					if [ "$highlight" ]; then
+						# End Formatting
+
+						# Store Deletions
+						del[$((highlight - 1))]=1	
+						del[$((i -1))]=1
+
+						# Store Formatting Codes
+						fmt[$((highlight - 1))]="$(echo -en "\e[7;33m")"
+						fmt[$((i - 1))]="$(echo -en "\e[27;37m")"
+						highlight=""
+					else
+						# Start Formatting (but only if there are more '' in the string)
+						[ "$(echo "${1:i}" | grep "__")" ] && highlight="$i"
+					fi
+				fi
+				;;
+			'~')
+				# Struck Processing
+				if [ "$sym_buffer" = '~' ]; then
+					# Trigger Formatting
+					if [ "$struck" ]; then
+						# End Formatting
+
+						# Store Deletions
+						del[$((struck - 1))]=1	
+						del[$((i -1))]=1
+
+						# Store Formatting Codes
+						fmt[$((struck - 1))]="$(echo -en "\e[9m")"
+						fmt[$((i - 1))]="$(echo -en "\e[29m")"
+						struck=""
+					else
+						# Start Formatting (but only if there are more '' in the string)
+						[ "$(echo "${1:i}" | grep '~~')" ] && struck="$i"
+					fi
+				fi
+				;;
+			'@'|' ')
+				# Tag Processing
+				# Trigger Formatting
+				if [ "$tag" ]&&[ "$char" = " " -o "$i" = "$(( ${#1} - 1))" ]; then
+					# End Formatting
+					
+					# Store Formatting Codes
+					fmt[$tag]="$(echo -en "\e[33m")"
+					fmt[$i]="$(echo -en "\e[37m")"
+					tag=""
+				elif [ "$char" = "@" ]; then
+					# Start Formatting
+					tag="$i"
+				fi
+				;;
+			'=')
+				# Header Processing
+				# Trigger Formatting
+				
+				# Note:
+				# Suggestion, proces entire line here in seperate loop
+				# To count equals at start and end.
+				if [ "$i" = "0" ] &&
+				[ "${1:2:1}" = "=" ] &&
+				[ "${1:$(( ${#1} - 2))}:1}" = "=" ] &&
+				[ "${1:$(( ${#1} - 3))}:1}" = "=" ]; then			
+					echo "Heading"
+					fmt[$i]="$(echo -en "\e[32m")"
+
+				fi
+
+				if [ "$tag" ]&&[ "$char" = " " -o "$i" = "$(( ${#1} - 1))" ]; then
+					# End Formatting
+					
+					# Store Formatting Codes
+					fmt[$tag]="$(echo -en "\e[33m")"
+					fmt[$i]="$(echo -en "\e[37m")"
+					tag=""
+				elif [ "$char" = "@" ]; then
+					# Start Formatting
+					tag="$i"
+				fi
+				;;
+			"'")
+				# Verbatim Processing
+				if [ "$sym_buffer" = "'" ]; then
+					# Trigger Formatting
+					if [ "$verbatim" ]; then
+						# End Formatting
+
+						# Store Deletions
+						del[$((verbatim - 1))]=1	
+						del[$((i -1))]=1
+
+						# Store Formatting Codes
+						fmt[$((verbatim - 1))]="$(echo -en "\e[2m")"
+						fmt[$((i - 1))]="$(echo -en "\e[22m")"
+						verbatim=""
+					else
+						# Start Formatting (but only if there are more '' in the string)
+						[ "$(echo "${1:i}" | grep "''")" ] && verbatim="$i"
+					fi
+				fi
+				;;
+			*)
+				# Clean up
+				if [ "$tag" ]&&[ "$i" = "$(( ${#1} -1 ))" ]; then
+					fmt[$tag]="$(echo -en "\e[33m")"
+				fi
+				;;
+
+		esac
+		sym_buffer="$char"
+	done
+
+	# Generate New String using data we got
+	for ((i = 0; i < ${#1}; i++)); do
+
+		# Append Formatting Code
+		if [ "${fmt[$i]}" ]; then
+			new_string+="${fmt[$i]}"
+		fi
+
+		if [ "${del[$i]}" ]; then
+			# Skip ahead in source string
+			i=$((i + del[i]))
+		else
+			# Append Characters
+			new_string+="${1:i:1}"
+		fi
+	done
+	echo -en "\e[0m"
+	echo "$new_string"
+
+}
+
+forLines() {
+	# 1 = Multiline String
+	# 2 = Function to pass it to
+	local IFS=$'\n' # Use newlines as field seperator
+	local line
+
+	for line in $1; do
+		$2 "$line"
+	done
+
+}
+
+FILE="$(cat "$1")"
+FILE_LENGTH="$(echo "$FILE" | wc -l)"
+FILE_CONTENT="$(echo "$FILE" | tail -$((FILE_LENGTH - 4)))"
+if [ ! "$(echo "$FILE" | head -1 | grep "^Content-Type: text/x-zim-wiki$")" ]; then
+	echo -e "\e[31;1mError: Not a Zim Wiki Document.\e[0m" 1>&2
+	exit 1
+fi
+
+OIFS="$IFS"
+while IFS='' read -r line; do
+	PARSED_CONTENT+="$(zim-parser "$line")"$'\n'
+done <<< "$FILE_CONTENT"
+
+echo "$PARSED_CONTENT"
