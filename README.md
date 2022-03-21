@@ -11,6 +11,7 @@ Why is it called this?
 | :------------------ | :-----------: | --------------------------------------: |
 | Bold Text           | Yes           | Bright/Bold Text                        |
 | Italic Text         | Yes           | Italic Text                             |
+| Horizontal Lines    | Planned       | Nothing
 | Links               | No            | Raw Markup                              |
 | Links With Names    | No            | Raw Markup                              |
 | Highlighted Text    | Yes           | Reversed Foreground & Background colors |
